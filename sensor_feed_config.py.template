@@ -1,0 +1,29 @@
+"""Configuration for the sensor feed."""
+# Print debug messages
+debug = True
+
+# Host and top-level topic to use for MQTT.
+mqtt_host = "192.168.1.1"
+mqtt_root_topic = "sensors"
+
+# GPIO pin to use for soil moisture sensor power enable/disable.
+pin_soil_power = 13
+
+# GPIO pin to use for powering to pump.
+pin_pump = 12
+
+# I2C pin configuration
+pin_scl = 5
+pin_sda = 4
+
+# I2C address for the BME280 sensor.
+i2c_addr_bme280 = 0x77
+
+# Periods for sensor reads/event offsets.
+event_periods = {
+    'ntp_sync': 120,
+    'temperature': 300,
+    'light': 300,
+    'pump_running': 40,
+    'soil_moisture': 600,
+}

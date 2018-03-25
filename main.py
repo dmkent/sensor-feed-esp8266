@@ -9,8 +9,6 @@ import bme280
 import si1145 
 import ads1x15
 
-import sensor_feed_config as config
-
 # 60 * 60 * 6
 SECONDS_PER_6HOURS = 21600
 OFFSET_3HOURS = 10800
@@ -27,35 +25,39 @@ def next_water_time(current_time):
 
 
 class Application:
-    def __init__(self, mqtt_host):
+    DEFAULT_EVENT_PERIOD = 300 # seconds
+
+    def __init__(self, mqtt_host, mqtt_root_topic, pin_soil_power, pin_pump, pin_scl, pin_sda, i2c_addr_bme280, event_periods, debug):
         """Setup the application"""
         self._events = []
 
         self.should_bail = False
-        self.debug = True
+        self.debug = debug
+        self.event_periods = event_periods
 
-        # configure mqtt cloent
+        # configure mqtt client
+        self.mqtt_root_topic = mqtt_root_topic
         self.mqtt_client = MQTTClient("umqtt_client", mqtt_host)
-        self.mqtt_client.set_callback(self.recieve_mqtt)
+        self.mqtt_client.set_callback(self.mqtt_recieve)
         self.mqtt_client.connect()
 
         # configure output pins
-        self.pin_soil_power = machine.Pin(13, machine.Pin.OUT)
-        self.pin_pump = machine.Pin(12, machine.Pin.OUT)
+        self.pin_soil_power = machine.Pin(pin_soil_power, machine.Pin.OUT)
+        self.pin_pump = machine.Pin(pin_pump, machine.Pin.OUT)
 
-        # set up i2c
-        self.i2c = machine.I2C(scl=machine.Pin(5), sda=machine.Pin(4))
-        self.sensor_bme280 = bme280.BME280(i2c=self.i2c, address=119)    
+        # set up i2c bus and sensors
+        self.i2c = machine.I2C(scl=machine.Pin(pin_scl), sda=machine.Pin(pin_sda))
+        self.sensor_bme280 = bme280.BME280(i2c=self.i2c, address=i2c_addr_bme280)    
         self.sensor_si1145 = si1145.SI1145(i2c=self.i2c)      
         self.sensor_adc = ads1x15.ADS1015(self.i2c)                                                                                                 
 
         # topic to trigger event loop end
-        self.mqtt_client.subscribe(b"plant/halt")
+        self.mqtt_client.subscribe(self.mqtt_make_topic("halt"))
 
-        # setup ntp, also schedules next event
+        # fire off initial events. These are self submitting so each one
+        # will submit the next job to the event queue.
         self.event_update_ntp(utime.time())
         current_time = utime.time()
-        self.event_test(current_time)
         self.event_temperature(current_time)
         self.event_light(current_time)
         self.event_soil_moisture(current_time)
@@ -65,42 +67,62 @@ class Application:
         self.mqtt_client.disconnect()
 
     def log(self, current_time, message):
+        """Simple logging to stout."""
         if self.debug:
             print(utime.localtime(current_time), message)
 
-    # Received messages from subscriptions will be delivered to this callback
-    def recieve_mqtt(self, topic, msg):
-        if topic == b"plant/halt":
+    def mqtt_make_topic(self, *sub_topics):
+        """Build mqtt topic strings."""
+        return bytes("/".join(self.mqtt_root_topic, *sub_topics), "utf-8")
+
+    def mqtt_recieve(self, topic, msg):
+        """Received messages from subscriptions will be delivered to this callback."""
+        if topic == self.mqtt_make_topic("halt"):
             self.should_bail = True
 
-        print((topic, msg))
+        self.log(utime.time(), topic + b': ' + msg)
     
-    def schedule_event_dtime(self, dtime, event):
+    def event_schedule_dtime(self, dtime, event):
+        """
+            Add a new event to the queue to be triggered at specific date/time.
+        
+            Trigger date/time is specified in epoch seconds. i.e. response from
+            ``utime.time()``.
+        """
         self._events.append((dtime, event))
 
-    def schedule_event_offset(self, offset_secs, event):
+    def event_schedule_offset(self, offset_secs, event):
+        """
+            Add a new event to the queue to be triggered ``offset_secs`` from current time.
+        """
         dtime_secs = utime.time() + offset_secs
         self._events.append((dtime_secs, event))
 
+    def event_period(self, value):
+        """Look-up period in event_periods, default if not found."""
+        return self.event_periods.get(value, self.DEFAULT_EVENT_PERIOD)
+
     def run(self):
-        """Main event loop."""
+        """Main event loop. Will run loop until ``should_bail`` is True."""
         self.should_bail = False
         while not self.should_bail:
             self.loop()
 
     def loop(self):
+        """The inner-event loop."""
         # Do house-keeping
         self.mqtt_client.check_msg()
 
         # Get current time
         current_time = utime.time()
 
-        # loop over list of events
+        # loop over list of pending events
         triggered = []
         for i in range(len(self._events)):
-            # if current time greater than event next trigger time then
+            # if current time greater than event trigger time then
             # trigger event
             if self._events[i][0] <= current_time:
+                # call the event callback.
                 self._events[i][1](current_time)
                 triggered.append(i)
 
@@ -115,28 +137,24 @@ class Application:
         """Sync RTC time from NTP."""
         self.log(current_time, 'Event: ntptime.settime')
         ntptime.settime()
-        self.schedule_event_offset(60, self.event_update_ntp)
-
-    def event_test(self, current_time):
-        self.log(current_time, 'Event: test')
-        self.schedule_event_offset(5, self.event_test)
+        self.event_schedule_offset(self.event_period('ntp_sync'), self.event_update_ntp)
 
     def event_temperature(self, current_time):
         """Get temperature fields from BME280."""
         self.log(current_time, 'Event: temperature')
         temp, press, humid = self.sensor_bme280.read_compensated_data()
-        self.mqtt_client.publish(b'plant/temperature', bytes(str(temp / 100), 'utf-8'))
-        self.mqtt_client.publish(b'plant/pressure', bytes(str(press / 256 / 100), 'utf-8'))
-        self.mqtt_client.publish(b'plant/humidity', bytes(str(humid / 1024), 'utf-8'))
-        self.schedule_event_offset(300, self.event_temperature)
+        self.mqtt_client.publish(self.mqtt_make_topic('temperature'), bytes(str(temp / 100), 'utf-8'))
+        self.mqtt_client.publish(self.mqtt_make_topic('pressure'), bytes(str(press / 256 / 100), 'utf-8'))
+        self.mqtt_client.publish(self.mqtt_make_topic('humidity'), bytes(str(humid / 1024), 'utf-8'))
+        self.event_schedule_offset(self.event_period('temperature'), self.event_temperature)
 
     def event_light(self, current_time):
         """Get light fields from SI1145."""
         self.log(current_time, 'Event: light')
-        self.mqtt_client.publish(b'plant/uv', bytes(str(self.sensor_si1145.read_uv), 'utf-8'))
-        self.mqtt_client.publish(b'plant/visible', bytes(str(self.sensor_si1145.read_visible), 'utf-8'))
-        self.mqtt_client.publish(b'plant/ir', bytes(str(self.sensor_si1145.read_ir), 'utf-8'))
-        self.schedule_event_offset(300, self.event_light)
+        self.mqtt_client.publish(self.mqtt_make_topic('uv'), bytes(str(self.sensor_si1145.read_uv), 'utf-8'))
+        self.mqtt_client.publish(self.mqtt_make_topic('visible'), bytes(str(self.sensor_si1145.read_visible), 'utf-8'))
+        self.mqtt_client.publish(self.mqtt_make_topic('ir'), bytes(str(self.sensor_si1145.read_ir), 'utf-8'))
+        self.event_schedule_offset(self.event_period('light'), self.event_light)
 
     def event_soil_moisture(self, current_time):
         """Get current soil mositure value from ADC."""
@@ -147,28 +165,33 @@ class Application:
         utime.sleep_ms(2000)
         value = self.sensor_adc.read(1)
         self.pin_soil_power.off()
-        self.mqtt_client.publish(b'plant/soil_moisture', bytes(str(value), 'utf-8'))
-        self.schedule_event_offset(600, self.event_soil_moisture)
+        self.mqtt_client.publish(self.mqtt_make_topic('soil_moisture'), bytes(str(value), 'utf-8'))
+        self.event_schedule_offset(self.event_period('soil_moisture'), self.event_soil_moisture)
 
     def event_pump_on(self, current_time):
         """Turn on pump, schedule it off."""
         self.log(current_time, 'Event: pump on')
-        self.mqtt_client.publish(b'plant/pump', b'on')
+        self.mqtt_client.publish(self.mqtt_make_topic('pump'), b'on')
         self.pin_pump.on()
-        self.schedule_event_offset(40, self.event_pump_off)
+        self.event_schedule_offset(self.event_period('pump_running'), self.event_pump_off)
         self.schedule_pump_on(current_time)
 
     def schedule_pump_on(self, current_time):
         next_trigger = next_water_time(current_time)
         self.log(current_time, "Scheduled next pump on at " + str(utime.localtime(next_trigger)))
-        self.schedule_event_dtime(next_trigger, self.event_pump_on)
+        self.event_schedule_dtime(next_trigger, self.event_pump_on)
 
     def event_pump_off(self, current_time):
         """Turn off pump."""
         self.log(current_time, 'Event: pump off')
-        self.mqtt_client.publish(b'plant/pump', b'off')
+        self.mqtt_client.publish(self.mqtt_make_topic('pump'), b'off')
         self.pin_pump.off()
 
 def main():
-    app = Application(config.mqtt_host)
+    import sensor_feed_config as config
+    app = Application(
+        config.mqtt_host, config.mqtt_root_topic, config.pin_soil_power,
+        config.pin_pump, config.pin_scl, config.pin_sda,
+        config.i2c_addr_bme280, config.event_periods, config.debug,
+    )
     app.run()
