@@ -2,6 +2,10 @@
 # Print debug messages
 debug = True
 
+# Network config
+network_ssid = "<ssid>"
+network_password = "<password>"
+
 # Host and top-level topic to use for MQTT.
 mqtt_host = "192.168.1.1"
 mqtt_root_topic = "sensors"

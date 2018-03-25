@@ -1,5 +1,6 @@
 """Main sensor feed loop"""
 import machine
+import network
 import utime
 from umqtt.simple import MQTTClient
 
@@ -24,16 +25,46 @@ def next_water_time(current_time):
     return next_trigger
 
 
+def wait_for_connection(sta_if):
+    import utime
+    while True:
+        status = sta_if.status()
+        if status == network.STAT_CONNECTING:
+            pass
+        elif status == network.STAT_GOT_IP:
+            print('network config:', sta_if.ifconfig())
+            return True
+        else:
+            # failed
+            print('unable to connect to network')
+            return False
+        utime.sleep_us(100)
+
+
+def do_network_connect(ssid, password):
+    sta_if = network.WLAN(network.STA_IF)
+    if not wait_for_connection(sta_if):
+        print('connecting to network...')
+        sta_if.active(True)
+        sta_if.connect(ssid, password)
+        wait_for_connection(sta_if)
+    else:
+        print('automatic reconnect successful')
+
+
 class Application:
     DEFAULT_EVENT_PERIOD = 300 # seconds
 
-    def __init__(self, mqtt_host, mqtt_root_topic, pin_soil_power, pin_pump, pin_scl, pin_sda, i2c_addr_bme280, event_periods, debug):
+    def __init__(self, ssid, password, mqtt_host, mqtt_root_topic, pin_soil_power, pin_pump, pin_scl, pin_sda, i2c_addr_bme280, event_periods, debug):
         """Setup the application"""
         self._events = []
 
         self.should_bail = False
         self.debug = debug
         self.event_periods = event_periods
+
+        # ensure network is up
+        do_network_connect(ssid, password)
 
         # configure mqtt client
         self.mqtt_root_topic = mqtt_root_topic
@@ -53,6 +84,7 @@ class Application:
 
         # topic to trigger event loop end
         self.mqtt_client.subscribe(self.mqtt_make_topic("halt"))
+        self.mqtt_client.subscribe(self.mqtt_make_topic("water_plant"))
 
         # fire off initial events. These are self submitting so each one
         # will submit the next job to the event queue.
@@ -73,12 +105,14 @@ class Application:
 
     def mqtt_make_topic(self, *sub_topics):
         """Build mqtt topic strings."""
-        return bytes("/".join(self.mqtt_root_topic, *sub_topics), "utf-8")
+        return bytes("/".join((self.mqtt_root_topic,) + sub_topics), "utf-8")
 
     def mqtt_recieve(self, topic, msg):
         """Received messages from subscriptions will be delivered to this callback."""
         if topic == self.mqtt_make_topic("halt"):
             self.should_bail = True
+        elif topic == self.mqtt_make_topic("water_plant"):
+            self.event_pump_on(utime.time())
 
         self.log(utime.time(), topic + b': ' + msg)
     
@@ -190,8 +224,11 @@ class Application:
 def main():
     import sensor_feed_config as config
     app = Application(
-        config.mqtt_host, config.mqtt_root_topic, config.pin_soil_power,
-        config.pin_pump, config.pin_scl, config.pin_sda,
+        config.network_ssid, config.network_password, config.mqtt_host, config.mqtt_root_topic,
+        config.pin_soil_power, config.pin_pump, config.pin_scl, config.pin_sda,
         config.i2c_addr_bme280, config.event_periods, config.debug,
     )
     app.run()
+
+# Run the program. Will stop and drop out to webrepl on mqtt message.
+main()
