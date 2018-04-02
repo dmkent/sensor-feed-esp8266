@@ -11,5 +11,5 @@ https://github.com/catdog2/mpy_bme280_esp8266/raw/master/bme280.py
 
 for fname in ${PACKAGES}
 do
-    curl -O $fname
+    curl -L -O $fname
 done
