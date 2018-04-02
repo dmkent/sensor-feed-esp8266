@@ -170,7 +170,10 @@ class Application:
     def event_update_ntp(self, current_time):
         """Sync RTC time from NTP."""
         self.log(current_time, 'Event: ntptime.settime')
-        ntptime.settime()
+        try:
+            ntptime.settime()
+        except OSError:
+            self.log(current_time, 'NTP timed out.')
         self.event_schedule_offset(self.event_period('ntp_sync'), self.event_update_ntp)
 
     def event_temperature(self, current_time):
@@ -212,7 +215,9 @@ class Application:
 
     def schedule_pump_on(self, current_time):
         next_trigger = next_water_time(current_time)
-        self.log(current_time, "Scheduled next pump on at " + str(utime.localtime(next_trigger)))
+        next_str = str(utime.localtime(next_trigger))
+        self.log(current_time, "Scheduled next pump on at " + next_str)
+        self.mqtt_client.publish(self.mqtt_make_topic('pump_next_on'), bytes(next_str, 'utf-8'))
         self.event_schedule_dtime(next_trigger, self.event_pump_on)
 
     def event_pump_off(self, current_time):
