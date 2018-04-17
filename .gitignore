@@ -1,4 +1,5 @@
 __pycache__
+*.pyc
 ads1x15.py
 bme280.py
 si1145.py
