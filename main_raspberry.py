@@ -8,15 +8,15 @@ from sensor_app.pwm_fan import PwmFan
 
 def fan_speed_for_temp(temp):
     """Determine fan PWM duty cycle for given temp."""
-    if temp < 20:
+    if temp < 24:
         return 0
-    elif temp < 22:
+    elif temp < 26:
         return 20
-    elif temp < 24:
-        return 40
-    elif temp < 25:
-        return 50
     elif temp < 28:
+        return 40
+    elif temp < 32:
+        return 50
+    elif temp < 35:
         return 80
     else:
         return 100
@@ -49,7 +49,6 @@ class Application(CPythonSensorApplication):
         self.log(current_time, 'Event: temperature')
         temp, humidity = self.si7120.read()
         fan_speed = fan_speed_for_temp(temp)
-        print(self.pwm_fan)
         self.pwm_fan.duty_cycle = fan_speed
         self.mqtt_client.publish(self.mqtt_make_topic('temperature'), temp)
         self.mqtt_client.publish(self.mqtt_make_topic('humidity'), humidity)
