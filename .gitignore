@@ -6,3 +6,6 @@ si1145.py
 sensor_feed_config.py
 .vscode
 .cache
+build
+*.egg-info
+sensor_app*tar.gz
