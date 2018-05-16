@@ -8,10 +8,8 @@ from sensor_app.pwm_fan import PwmFan
 
 def fan_speed_for_temp(temp):
     """Determine fan PWM duty cycle for given temp."""
-    if temp < 24:
+    if temp < 26:
         return 0
-    elif temp < 26:
-        return 20
     elif temp < 28:
         return 40
     elif temp < 32:
