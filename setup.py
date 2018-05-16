@@ -20,6 +20,10 @@ setup(
     author='David Kent',
     author_email='davidkent@fastmail.com.au',
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),
+    install_requires=[
+        'paho-mqtt',
+        'RPi.GPIO',
+    ],
     entry_points={
         'console_scripts': [
             'sensor_app_rpi=sensor_app.main_rpi:main',
