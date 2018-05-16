@@ -235,5 +235,9 @@ def main():
     )
     app.run()
 
+last_error = ""
 # Run the program. Will stop and drop out to webrepl on mqtt message.
-main()
+try:
+    main()
+except Exception as err:
+    last_error = str(err)
