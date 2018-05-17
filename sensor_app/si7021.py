@@ -13,7 +13,7 @@ READ_HUM = 0xF5
 class SI7021:
     def __init__(self):
         # Get I2C bus
-        self.i2c = os.open(f'/dev/i2c-{I2C_CHANNEL}', os.O_RDWR)
+        self.i2c = os.open('/dev/i2c-{0}'.format(I2C_CHANNEL), os.O_RDWR)
         fcntl.ioctl(self.i2c, I2C_SLAVE, ADDR)
 
     def read(self):
