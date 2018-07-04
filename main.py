@@ -2,7 +2,7 @@
 import machine
 import network
 import utime
-from umqtt.simple import MQTTClient
+from umqtt.robust import MQTTClient
 
 import ntptime
 
