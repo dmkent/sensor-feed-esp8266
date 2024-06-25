@@ -7,12 +7,13 @@ from sensor_app.sensor_app_base import SensorApplication
 
 
 class CPythonSensorApplication(SensorApplication):
-    def __init__(self, mqtt_host, mqtt_root_topic, mqtt_sub_topics, *args, **kwargs):
+    def __init__(self, mqtt_host, mqtt_root_topic, mqtt_sub_topics, mqtt_username, mqtt_password, *args, **kwargs):
         """Setup the application"""
         super(CPythonSensorApplication, self).__init__(*args, **kwargs)
         self.mqtt_root_topic = mqtt_root_topic
         self.mqtt_sub_topics = mqtt_sub_topics
         self.mqtt_client = mqtt.Client()
+        self.mqtt_client.username_pw_set(mqtt_username, mqtt_password)
         self.mqtt_client.on_connect = self.mqtt_on_connect
         self.mqtt_client.on_message = self.mqtt_recieve
         self.mqtt_client.connect(mqtt_host, 1883, 60)

@@ -20,7 +20,7 @@ class SimpleApp(CPythonSensorApplication):
 class SensorAppTestCase(unittest.TestCase):
     def test_single(self):
         host = os.getenv('MQTT_HOST', '::1')
-        app = SimpleApp(host, 'mqtt', {}, True)
+        app = SimpleApp(host, 'mqtt', {}, None, None, True)
         app.run()
 
         self.assertEqual(app.mock_event.call_count, 3)

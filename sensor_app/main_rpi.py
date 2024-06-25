@@ -23,10 +23,10 @@ def fan_speed_for_temp(temp):
 class Application(CPythonSensorApplication):
     DEFAULT_EVENT_PERIOD = 300 # seconds
 
-    def __init__(self, mqtt_host, mqtt_root_topic, pin_fan_pwm, proc_path_si7120, event_periods, debug):
+    def __init__(self, mqtt_host, mqtt_root_topic, mqtt_username, mqtt_password, pin_fan_pwm, proc_path_si7120, event_periods, debug):
         """Setup the application"""
         mqtt_sub_topics = ["halt"]
-        super(Application, self).__init__(mqtt_host, mqtt_root_topic, mqtt_sub_topics, event_periods, debug)
+        super(Application, self).__init__(mqtt_host, mqtt_root_topic, mqtt_sub_topics, mqtt_username, mqtt_password, event_periods, debug)
         
         # configure output pins
         self.pwm_fan = PwmFan(pin_fan_pwm, 10, 25)
@@ -57,6 +57,7 @@ def main():
     import sensor_feed_config as config
     app = Application(
         config.mqtt_host, config.mqtt_root_topic,
+        config.mqtt_username, config.mqtt_password,
         config.pin_fan, config.proc_path_si7120, config.event_periods, config.debug,
     )
     app.run()
