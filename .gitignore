@@ -9,3 +9,4 @@ sensor_feed_config.py
 build
 *.egg-info
 sensor_app*tar.gz
+.eggs

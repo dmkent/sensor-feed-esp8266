@@ -22,7 +22,7 @@ setup(
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),
     install_requires=[
         'paho-mqtt',
-        'RPi.GPIO',
+        'gpiozero',
     ],
     entry_points={
         'console_scripts': [
